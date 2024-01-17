@@ -13,4 +13,4 @@ FROM alpine:3.19
 
 COPY --from=build /usr/local/bin/app /app
 
-CMD ["/app", "-server"]
+CMD ["/app"]
