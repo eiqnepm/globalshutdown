@@ -68,11 +68,16 @@ func main() {
 			systray.Quit()
 		}
 
-		mCopy := systray.AddMenuItem("Copy ID", "")
+		mCopyLink := systray.AddMenuItem("Copy link", "")
+		mCopyId := systray.AddMenuItem("Copy ID", "")
 		go func() {
 			for {
-				<-mCopy.ClickedCh
-				clipboard.Write(clipboard.FmtText, []byte(id.String()))
+				select {
+				case <-mCopyLink.ClickedCh:
+					clipboard.Write(clipboard.FmtText, []byte("https://eiqnepm.github.io/globalshutdown?id="+id.String()))
+				case <-mCopyId.ClickedCh:
+					clipboard.Write(clipboard.FmtText, []byte(id.String()))
+				}
 			}
 		}()
 
