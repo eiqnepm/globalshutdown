@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
 )
 
@@ -19,6 +20,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
 	app := fiber.New()
+	app.Use(cors.New())
 
 	app.Post("/shutdown", func(c *fiber.Ctx) error {
 		var idString string
