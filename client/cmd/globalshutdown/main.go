@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -29,69 +28,10 @@ var (
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
-	fServer := flag.Bool("server", false, "Enables server mode")
 	fScheme := flag.String("scheme", "https", "Specifies the server scheme for the client")
 	fHost := flag.String("host", "globalshutdown.eiqnepm.duckdns.org", "Specifies the server host for the client")
 	fPort := flag.Int("port", 3000, "Specifies the server port for the client")
 	flag.Parse()
-
-	if *fServer {
-		app := fiber.New()
-
-		app.Post("/shutdown", func(c *fiber.Ctx) error {
-			var idString string
-			err := json.Unmarshal(c.Body(), &idString)
-			if err != nil {
-				return err
-			}
-
-			id, err := uuid.Parse(idString)
-			if err != nil {
-				return err
-			}
-
-			mPendingMachines.Lock()
-			defer mPendingMachines.Unlock()
-			if !slices.Contains(pendingMachines, id) {
-				pendingMachines = append(pendingMachines, id)
-			}
-
-			return c.SendStatus(fiber.StatusOK)
-		})
-
-		app.Post("/pending", func(c *fiber.Ctx) error {
-			var idString string
-			err := json.Unmarshal(c.Body(), &idString)
-			if err != nil {
-				return err
-			}
-
-			id, err := uuid.Parse(idString)
-			if err != nil {
-				return c.SendStatus(fiber.StatusBadRequest)
-			}
-
-			if !slices.Contains(pendingMachines, id) {
-				return c.JSON(false)
-			}
-
-			mPendingMachines.Lock()
-			defer mPendingMachines.Unlock()
-			var newPendingMachines []uuid.UUID
-			for _, pending := range pendingMachines {
-				if pending == id {
-					continue
-				}
-
-				newPendingMachines = append(newPendingMachines, pending)
-			}
-
-			pendingMachines = newPendingMachines
-			return c.JSON(true)
-		})
-
-		app.Listen(":3000")
-	}
 
 	systray.Run(func() {
 		systray.SetIcon(icon.Data)
