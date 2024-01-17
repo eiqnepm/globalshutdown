@@ -30,7 +30,7 @@ func main() {
 
 	fScheme := flag.String("scheme", "https", "Specifies the server scheme for the client")
 	fHost := flag.String("host", "globalshutdown.eiqnepm.duckdns.org", "Specifies the server host for the client")
-	fPort := flag.Int("port", 3000, "Specifies the server port for the client")
+	fPort := flag.Int("port", 443, "Specifies the server port for the client")
 	flag.Parse()
 
 	systray.Run(func() {
