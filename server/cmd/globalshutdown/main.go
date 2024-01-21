@@ -100,7 +100,6 @@ func main() {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		// row := db.QueryRow("WITH deleted AS (DELETE FROM pending WHERE id = ? RETURNING *) SELECT COUNT(*) FROM deleted", id.String())
 		var id string
 		row := db.QueryRow("DELETE FROM pending WHERE id = ? RETURNING 1", idParsed.String())
 		if err := row.Scan(&id); err != nil {
