@@ -1,19 +1,14 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
-	"slices"
-	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
-)
-
-var (
-	pendingMachines  []uuid.UUID
-	mPendingMachines sync.Mutex
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -22,22 +17,70 @@ func main() {
 	app := fiber.New()
 	app.Use(cors.New())
 
+	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	stmt, err := db.Prepare("CREATE TABLE IF NOT EXISTS pending (id TEXT PRIMARY KEY NOT NULL)")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if _, err := stmt.Exec(); err != nil {
+		log.Fatal(err)
+	}
+
 	app.Post("/shutdown", func(c *fiber.Ctx) error {
 		var idString string
 		err := json.Unmarshal(c.Body(), &idString)
 		if err != nil {
-			return err
+			log.Println(err)
+			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
 		id, err := uuid.Parse(idString)
 		if err != nil {
-			return err
+			log.Println(err)
+			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		mPendingMachines.Lock()
-		defer mPendingMachines.Unlock()
-		if !slices.Contains(pendingMachines, id) {
-			pendingMachines = append(pendingMachines, id)
+		stmt, err := db.Prepare("INSERT OR IGNORE INTO pending VALUES (?)")
+		if err != nil {
+			log.Println(err)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		if _, err := stmt.Exec(id); err != nil {
+			log.Println(err)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		var count int
+		row := db.QueryRow("SELECT COUNT(*) FROM pending")
+		if err := row.Scan(&count); err != nil {
+			log.Println(err)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		maxCount := 1000
+		if count > maxCount {
+			stmt, err := db.Prepare("DELETE FROM pending WHERE rowid <= ?")
+			if err != nil {
+				log.Println(err)
+				return c.SendStatus(fiber.StatusInternalServerError)
+			}
+
+			if _, err := stmt.Exec(count - maxCount); err != nil {
+				log.Println(err)
+				return c.SendStatus(fiber.StatusInternalServerError)
+			}
 		}
 
 		return c.SendStatus(fiber.StatusOK)
@@ -47,30 +90,28 @@ func main() {
 		var idString string
 		err := json.Unmarshal(c.Body(), &idString)
 		if err != nil {
-			return err
-		}
-
-		id, err := uuid.Parse(idString)
-		if err != nil {
+			log.Println(err)
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		if !slices.Contains(pendingMachines, id) {
-			return c.JSON(false)
+		idParsed, err := uuid.Parse(idString)
+		if err != nil {
+			log.Println(err)
+			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		mPendingMachines.Lock()
-		defer mPendingMachines.Unlock()
-		var newPendingMachines []uuid.UUID
-		for _, pending := range pendingMachines {
-			if pending == id {
-				continue
+		// row := db.QueryRow("WITH deleted AS (DELETE FROM pending WHERE id = ? RETURNING *) SELECT COUNT(*) FROM deleted", id.String())
+		var id string
+		row := db.QueryRow("DELETE FROM pending WHERE id = ? RETURNING 1", idParsed.String())
+		if err := row.Scan(&id); err != nil {
+			if err == sql.ErrNoRows {
+				return c.JSON(false)
 			}
 
-			newPendingMachines = append(newPendingMachines, pending)
+			log.Println(err)
+			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 
-		pendingMachines = newPendingMachines
 		return c.JSON(true)
 	})
 
