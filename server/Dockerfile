@@ -6,6 +6,7 @@ COPY go.mod ./
 COPY go.sum ./
 COPY cmd ./cmd
 
+ARG CGO_ENABLED=1
 RUN go mod download
 RUN go build -ldflags="-s -w" -o /usr/local/bin/app cmd/globalshutdown/main.go
 
