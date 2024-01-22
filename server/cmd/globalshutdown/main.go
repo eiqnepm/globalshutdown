@@ -73,8 +73,8 @@ func main() {
 		}
 
 		h := sha256.New()
-		h.Write([]byte(c.IP()))
-		ipHash := string(h.Sum(nil)) + salt
+		h.Write([]byte(c.IP() + salt))
+		ipHash := string(h.Sum(nil))
 
 		var count int
 		if err := db.QueryRow("SELECT COUNT(*) FROM pending WHERE ip = ?", ipHash).Scan(&count); err != nil {
