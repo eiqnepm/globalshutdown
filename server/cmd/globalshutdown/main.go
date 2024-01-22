@@ -57,6 +57,7 @@ func main() {
 		}
 	}()
 
+	salt := uuid.New().String()
 	app.Post("/shutdown", func(c *fiber.Ctx) error {
 		var idString string
 		err := json.Unmarshal(c.Body(), &idString)
@@ -73,7 +74,7 @@ func main() {
 
 		h := sha256.New()
 		h.Write([]byte(c.IP()))
-		ipHash := string(h.Sum(nil))
+		ipHash := string(h.Sum(nil)) + salt
 
 		var count int
 		if err := db.QueryRow("SELECT COUNT(*) FROM pending WHERE ip = ?", ipHash).Scan(&count); err != nil {
