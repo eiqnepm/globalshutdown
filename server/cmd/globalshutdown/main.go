@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -14,7 +16,10 @@ import (
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		ProxyHeader: fiber.HeaderXForwardedFor,
+	})
+
 	app.Use(cors.New())
 
 	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
@@ -28,7 +33,7 @@ func main() {
 		}
 	}()
 
-	stmt, err := db.Prepare("CREATE TABLE IF NOT EXISTS pending (id TEXT PRIMARY KEY NOT NULL)")
+	stmt, err := db.Prepare("CREATE TABLE IF NOT EXISTS pending (id TEXT PRIMARY KEY NOT NULL, ip TEXT NOT NULL, time TEXT NOT NULL)")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,6 +41,21 @@ func main() {
 	if _, err := stmt.Exec(); err != nil {
 		log.Fatal(err)
 	}
+
+	go func() {
+		for range time.Tick(30 * time.Minute) {
+			stmt, err := db.Prepare("DELETE FROM pending WHERE time < ?")
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+
+			if _, err := stmt.Exec(time.Now().Add(-1 * time.Hour)); err != nil {
+				log.Println(err)
+				continue
+			}
+		}
+	}()
 
 	app.Post("/shutdown", func(c *fiber.Ctx) error {
 		var idString string
@@ -51,36 +71,29 @@ func main() {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		stmt, err := db.Prepare("INSERT OR IGNORE INTO pending VALUES (?)")
+		h := sha256.New()
+		h.Write([]byte(c.IP()))
+		ipHash := string(h.Sum(nil))
+
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM pending WHERE ip = ?", ipHash).Scan(&count); err != nil {
+			log.Println(err)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		if count >= 5 {
+			return c.SendStatus(fiber.StatusTooManyRequests)
+		}
+
+		stmt, err := db.Prepare("INSERT OR REPLACE INTO pending VALUES (?, ?, ?)")
 		if err != nil {
 			log.Println(err)
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 
-		if _, err := stmt.Exec(id); err != nil {
+		if _, err := stmt.Exec(id, ipHash, time.Now()); err != nil {
 			log.Println(err)
 			return c.SendStatus(fiber.StatusInternalServerError)
-		}
-
-		var count int
-		row := db.QueryRow("SELECT COUNT(*) FROM pending")
-		if err := row.Scan(&count); err != nil {
-			log.Println(err)
-			return c.SendStatus(fiber.StatusInternalServerError)
-		}
-
-		maxCount := 1000
-		if count > maxCount {
-			stmt, err := db.Prepare("DELETE FROM pending WHERE rowid <= ?")
-			if err != nil {
-				log.Println(err)
-				return c.SendStatus(fiber.StatusInternalServerError)
-			}
-
-			if _, err := stmt.Exec(count - maxCount); err != nil {
-				log.Println(err)
-				return c.SendStatus(fiber.StatusInternalServerError)
-			}
 		}
 
 		return c.SendStatus(fiber.StatusOK)
