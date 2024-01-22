@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"time"
 
@@ -117,7 +118,7 @@ func main() {
 		var id string
 		row := db.QueryRow("DELETE FROM pending WHERE id = ? RETURNING 1", idParsed.String())
 		if err := row.Scan(&id); err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return c.JSON(false)
 			}
 
@@ -128,5 +129,7 @@ func main() {
 		return c.JSON(true)
 	})
 
-	app.Listen(":3000")
+	if err := app.Listen(":3000"); err != nil {
+		log.Fatal(err)
+	}
 }
